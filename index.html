@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D P2P Shooter</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-container">
+        <h1>P2P Shooter</h1>
+        <div id="status">Connecting to Peer network...</div>
+        <div class="menu-box">
+            <button id="host-btn" disabled>Host Game</button>
+            <p>Your ID: <span id="my-id">...</span></p>
+        </div>
+        <div class="menu-box">
+            <input type="text" id="join-id" placeholder="Enter Host ID">
+            <button id="join-btn" disabled>Join Game</button>
+        </div>
+        <p class="instructions">Click on the screen to play once connected.<br>WASD to move, Mouse to look, Click to shoot.</p>
+    </div>
+
+    <div id="crosshair">+</div>
+
+    <div id="damage-overlay"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
