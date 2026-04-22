@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>3D P2P Shooter</title>
     <link rel="stylesheet" href="style.css">
     
@@ -23,12 +23,22 @@
             <input type="text" id="join-id" placeholder="Enter Host ID">
             <button id="join-btn" disabled>Join Game</button>
         </div>
-        <p class="instructions">Click on the screen to play once connected.<br>WASD to move, Mouse to look, Click to shoot.</p>
+        <p class="instructions">
+            <strong>Desktop:</strong> WASD to move, Mouse to look, Click to shoot.<br>
+            <strong>Mobile:</strong> Use left joystick to move, drag right side to look.
+        </p>
     </div>
 
     <div id="crosshair">+</div>
 
     <div id="damage-overlay"></div>
+
+    <div id="mobile-controls">
+        <div id="joystick-zone">
+            <div id="joystick-stick"></div>
+        </div>
+        <button id="mobile-shoot">FIRE</button>
+    </div>
 
     <script src="script.js"></script>
 </body>
