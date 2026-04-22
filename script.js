@@ -6,7 +6,7 @@ scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 0, 50);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.rotation.order = "YXZ"; // Ensures correct manual rotation on mobile
+camera.rotation.order = "YXZ"; 
 camera.position.y = 1.6; 
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -43,19 +43,22 @@ remotePlayer.visible = false;
 // 2. STATE & CONTROLS SETUP
 // ==========================================
 let inGame = false;
+let myHealth = 100;
+let canJump = true;
+
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if (isMobile) document.body.classList.add('touch-device');
 
 const controls = new THREE.PointerLockControls(camera, document.body);
 const crosshair = document.getElementById('crosshair');
+const healthEl = document.getElementById('health-display');
 
-// Movement Variables
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let prevTime = performance.now();
 
-// Desktop Lock & Keys
+// Desktop Locks
 document.addEventListener('click', () => {
     if (inGame && !isMobile) controls.lock();
 });
@@ -63,12 +66,19 @@ document.addEventListener('click', () => {
 controls.addEventListener('lock', () => crosshair.style.display = 'block');
 controls.addEventListener('unlock', () => crosshair.style.display = 'none');
 
+// Keyboard mapping
 document.addEventListener('keydown', (e) => {
     switch (e.code) {
         case 'KeyW': moveForward = true; break;
         case 'KeyA': moveLeft = true; break;
         case 'KeyS': moveBackward = true; break;
         case 'KeyD': moveRight = true; break;
+        case 'Space': 
+            if (canJump && inGame) {
+                velocity.y = 25.0; // Jump power
+                canJump = false;
+            }
+            break;
     }
 });
 
@@ -87,16 +97,12 @@ document.addEventListener('keyup', (e) => {
 let touchX = 0, touchY = 0;
 const touchSensitivity = 0.005;
 
-// Mobile Camera Look
 document.addEventListener('touchmove', (e) => {
     if (!inGame || !isMobile) return;
-    
-    // Look around only if touching the right half of screen
     if (e.touches[0].pageX > window.innerWidth / 2) {
         if (touchX !== 0 && touchY !== 0) {
             const dx = e.touches[0].pageX - touchX;
             const dy = e.touches[0].pageY - touchY;
-            
             camera.rotation.y -= dx * touchSensitivity;
             camera.rotation.x -= dy * touchSensitivity;
             camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
@@ -108,13 +114,11 @@ document.addEventListener('touchmove', (e) => {
 
 document.addEventListener('touchend', () => { touchX = 0; touchY = 0; });
 
-// Mobile Joystick Logic
 const joystickZone = document.getElementById('joystick-zone');
 const stick = document.getElementById('joystick-stick');
 let joystickActive = false;
 
 joystickZone.addEventListener('touchstart', () => joystickActive = true);
-
 joystickZone.addEventListener('touchmove', (e) => {
     if (!inGame || !joystickActive) return;
     const touch = e.touches[0];
@@ -146,15 +150,24 @@ joystickZone.addEventListener('touchend', () => {
     moveForward = moveBackward = moveLeft = moveRight = false;
 });
 
+// Mobile Jump Trigger
+document.getElementById('mobile-jump').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (canJump && inGame) {
+        velocity.y = 25.0; 
+        canJump = false;
+    }
+});
+
+
 // ==========================================
-// 4. PEER.JS LOGIC
+// 4. MULTIPLAYER & HEALTH LOGIC
 // ==========================================
 const peer = new Peer();
 let conn = null;
 
 const statusEl = document.getElementById('status');
 const myIdEl = document.getElementById('my-id');
-const uiContainer = document.getElementById('ui-container');
 
 peer.on('open', (id) => {
     myIdEl.innerText = id;
@@ -178,24 +191,19 @@ document.getElementById('join-btn').addEventListener('click', () => {
 
 function setupConnection() {
     conn.on('open', () => {
-        uiContainer.style.display = 'none';
+        document.getElementById('ui-container').style.display = 'none';
         remotePlayer.visible = true;
         inGame = true;
+        document.body.classList.add('in-game');
         
-        if (isMobile) {
-            document.body.classList.add('in-game');
-        } else {
-            controls.lock();
-        }
+        if (!isMobile) controls.lock();
     });
 
     conn.on('data', (data) => {
         if (data.type === 'transform') {
             remotePlayer.position.set(data.x, data.y, data.z);
         } else if (data.type === 'hit') {
-            const damageOverlay = document.getElementById('damage-overlay');
-            damageOverlay.style.opacity = 0.5;
-            setTimeout(() => damageOverlay.style.opacity = 0, 150);
+            takeDamage(25); // Taking 25 damage per hit
         }
     });
 
@@ -203,6 +211,32 @@ function setupConnection() {
         alert("Opponent disconnected.");
         location.reload();
     });
+}
+
+function takeDamage(amount) {
+    myHealth -= amount;
+    
+    // Flash damage overlay
+    const damageOverlay = document.getElementById('damage-overlay');
+    damageOverlay.style.opacity = 0.5;
+    setTimeout(() => damageOverlay.style.opacity = 0, 150);
+
+    if (myHealth <= 0) {
+        alert("You got fragged! Respawning...");
+        myHealth = 100;
+        
+        // Random Respawn Position
+        camera.position.set(
+            (Math.random() - 0.5) * 30, 
+            1.6, 
+            (Math.random() - 0.5) * 30
+        );
+        velocity.set(0,0,0);
+    }
+    
+    // Update UI Color
+    healthEl.innerText = `HP: ${myHealth}`;
+    healthEl.style.color = myHealth > 50 ? '#28a745' : (myHealth > 25 ? '#ffc107' : '#dc3545');
 }
 
 // ==========================================
@@ -218,20 +252,19 @@ function attemptShoot() {
     if (intersects.length > 0) {
         remotePlayer.material.color.setHex(0xffffff);
         setTimeout(() => remotePlayer.material.color.setHex(0xff0000), 100);
-        conn.send({ type: 'hit' });
+        conn.send({ type: 'hit' }); // Tell other player they took damage
     }
 }
 
-// Desktop Shoot
 document.addEventListener('mousedown', (e) => {
     if (e.button === 0 && !isMobile && controls.isLocked) attemptShoot();
 });
 
-// Mobile Shoot
 document.getElementById('mobile-shoot').addEventListener('touchstart', (e) => {
     e.preventDefault(); 
     attemptShoot();
 });
+
 
 // ==========================================
 // 6. GAME LOOP
@@ -242,8 +275,10 @@ function animate() {
     const time = performance.now();
     const delta = (time - prevTime) / 1000;
 
-    // Run movement physics if game has started
     if (inGame) {
+        // Apply Gravity
+        velocity.y -= 80.0 * delta; 
+        
         velocity.x -= velocity.x * 10.0 * delta;
         velocity.z -= velocity.z * 10.0 * delta;
 
@@ -256,22 +291,29 @@ function animate() {
         if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
 
         if (isMobile) {
-            // Manual movement for mobile (Translate relative to camera rotation)
             camera.translateX(-velocity.x * delta);
-            camera.translateZ(-velocity.z * delta);
+            camera.translateZ(velocity.z * delta); // Inverted fix! Translating by positive velocity.z moves forward correctly
         } else {
-            // PointerLock standard movement
             controls.moveRight(-velocity.x * delta);
             controls.moveForward(-velocity.z * delta);
         }
         
-        camera.position.y = 1.6; // Lock to floor height
+        // Vertical movement application
+        camera.position.y += velocity.y * delta;
 
+        // Floor Collision
+        if (camera.position.y < 1.6) {
+            velocity.y = 0;
+            camera.position.y = 1.6;
+            canJump = true;
+        }
+
+        // Network broadcasting
         if (conn && conn.open) {
             conn.send({
                 type: 'transform',
                 x: camera.position.x,
-                y: camera.position.y - 0.6,
+                y: camera.position.y - 0.6, // Keeps mesh cleanly on ground
                 z: camera.position.z
             });
         }
