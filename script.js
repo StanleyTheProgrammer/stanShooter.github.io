@@ -203,7 +203,7 @@ function setupConnection() {
         if (data.type === 'transform') {
             remotePlayer.position.set(data.x, data.y, data.z);
         } else if (data.type === 'hit') {
-            takeDamage(25); // Taking 25 damage per hit
+            takeDamage(25);
         }
     });
 
@@ -216,7 +216,6 @@ function setupConnection() {
 function takeDamage(amount) {
     myHealth -= amount;
     
-    // Flash damage overlay
     const damageOverlay = document.getElementById('damage-overlay');
     damageOverlay.style.opacity = 0.5;
     setTimeout(() => damageOverlay.style.opacity = 0, 150);
@@ -225,7 +224,6 @@ function takeDamage(amount) {
         alert("You got fragged! Respawning...");
         myHealth = 100;
         
-        // Random Respawn Position
         camera.position.set(
             (Math.random() - 0.5) * 30, 
             1.6, 
@@ -234,7 +232,6 @@ function takeDamage(amount) {
         velocity.set(0,0,0);
     }
     
-    // Update UI Color
     healthEl.innerText = `HP: ${myHealth}`;
     healthEl.style.color = myHealth > 50 ? '#28a745' : (myHealth > 25 ? '#ffc107' : '#dc3545');
 }
@@ -252,7 +249,7 @@ function attemptShoot() {
     if (intersects.length > 0) {
         remotePlayer.material.color.setHex(0xffffff);
         setTimeout(() => remotePlayer.material.color.setHex(0xff0000), 100);
-        conn.send({ type: 'hit' }); // Tell other player they took damage
+        conn.send({ type: 'hit' }); 
     }
 }
 
@@ -291,9 +288,20 @@ function animate() {
         if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
 
         if (isMobile) {
-            camera.translateX(-velocity.x * delta);
-            camera.translateZ(velocity.z * delta); // Inverted fix! Translating by positive velocity.z moves forward correctly
+            // Mobile True Horizontal Plane Movement Fix
+            const camForward = new THREE.Vector3();
+            camera.getWorldDirection(camForward);
+            camForward.y = 0; // Lock to horizontal plane
+            camForward.normalize();
+
+            const camLeft = new THREE.Vector3();
+            camLeft.crossVectors(camera.up, camForward).normalize();
+
+            // Apply calculated movement mapping to actual camera positions
+            camera.position.addScaledVector(camForward, -velocity.z * delta);
+            camera.position.addScaledVector(camLeft, velocity.x * delta);
         } else {
+            // Standard desktop pointer lock movement
             controls.moveRight(-velocity.x * delta);
             controls.moveForward(-velocity.z * delta);
         }
@@ -313,7 +321,7 @@ function animate() {
             conn.send({
                 type: 'transform',
                 x: camera.position.x,
-                y: camera.position.y - 0.6, // Keeps mesh cleanly on ground
+                y: camera.position.y - 0.6,
                 z: camera.position.z
             });
         }
