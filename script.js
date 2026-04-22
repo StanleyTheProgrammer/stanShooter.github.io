@@ -2,31 +2,29 @@
 // 1. THREE.JS SETUP
 // ==========================================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // Sky blue
+scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 0, 50);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.y = 1.6; // Player eye level
+camera.rotation.order = "YXZ"; // Ensures correct manual rotation on mobile
+camera.position.y = 1.6; 
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
 
-// Environment (Floor and Obstacles)
 const floorGeo = new THREE.PlaneGeometry(100, 100);
 const floorMat = new THREE.MeshStandardMaterial({ color: 0x334433, roughness: 0.8 });
 const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 
-// Generate some random blocks for cover
 for(let i=0; i<20; i++) {
     const boxGeo = new THREE.BoxGeometry(2, 2, 2);
     const boxMat = new THREE.MeshStandardMaterial({ color: 0x777777 });
@@ -35,34 +33,35 @@ for(let i=0; i<20; i++) {
     scene.add(box);
 }
 
-// Remote Player Mesh
 const playerGeo = new THREE.BoxGeometry(1, 2, 1);
 const playerMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
 const remotePlayer = new THREE.Mesh(playerGeo, playerMat);
 scene.add(remotePlayer);
-remotePlayer.visible = false; // Hide until someone joins
+remotePlayer.visible = false; 
 
 // ==========================================
-// 2. CONTROLS & MOVEMENT
+// 2. STATE & CONTROLS SETUP
 // ==========================================
+let inGame = false;
+const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isMobile) document.body.classList.add('touch-device');
+
 const controls = new THREE.PointerLockControls(camera, document.body);
 const crosshair = document.getElementById('crosshair');
 
-// Lock mouse on click (if game started)
-document.addEventListener('click', () => {
-    if (document.getElementById('ui-container').style.display === 'none') {
-        controls.lock();
-    }
-});
-
-controls.addEventListener('lock', () => crosshair.style.display = 'block');
-controls.addEventListener('unlock', () => crosshair.style.display = 'none');
-
-// Movement State
+// Movement Variables
 let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let prevTime = performance.now();
+
+// Desktop Lock & Keys
+document.addEventListener('click', () => {
+    if (inGame && !isMobile) controls.lock();
+});
+
+controls.addEventListener('lock', () => crosshair.style.display = 'block');
+controls.addEventListener('unlock', () => crosshair.style.display = 'none');
 
 document.addEventListener('keydown', (e) => {
     switch (e.code) {
@@ -83,37 +82,94 @@ document.addEventListener('keyup', (e) => {
 });
 
 // ==========================================
-// 3. PEER.JS MULTIPLAYER LOGIC
+// 3. MOBILE CONTROLS LOGIC
+// ==========================================
+let touchX = 0, touchY = 0;
+const touchSensitivity = 0.005;
+
+// Mobile Camera Look
+document.addEventListener('touchmove', (e) => {
+    if (!inGame || !isMobile) return;
+    
+    // Look around only if touching the right half of screen
+    if (e.touches[0].pageX > window.innerWidth / 2) {
+        if (touchX !== 0 && touchY !== 0) {
+            const dx = e.touches[0].pageX - touchX;
+            const dy = e.touches[0].pageY - touchY;
+            
+            camera.rotation.y -= dx * touchSensitivity;
+            camera.rotation.x -= dy * touchSensitivity;
+            camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+        }
+        touchX = e.touches[0].pageX;
+        touchY = e.touches[0].pageY;
+    }
+}, { passive: false });
+
+document.addEventListener('touchend', () => { touchX = 0; touchY = 0; });
+
+// Mobile Joystick Logic
+const joystickZone = document.getElementById('joystick-zone');
+const stick = document.getElementById('joystick-stick');
+let joystickActive = false;
+
+joystickZone.addEventListener('touchstart', () => joystickActive = true);
+
+joystickZone.addEventListener('touchmove', (e) => {
+    if (!inGame || !joystickActive) return;
+    const touch = e.touches[0];
+    const rect = joystickZone.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    let dx = touch.pageX - centerX;
+    let dy = touch.pageY - centerY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const maxDist = 40;
+
+    if (dist > maxDist) {
+        dx *= maxDist / dist;
+        dy *= maxDist / dist;
+    }
+
+    stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+    moveForward = dy < -10;
+    moveBackward = dy > 10;
+    moveLeft = dx < -10;
+    moveRight = dx > 10;
+});
+
+joystickZone.addEventListener('touchend', () => {
+    joystickActive = false;
+    stick.style.transform = `translate(-50%, -50%)`;
+    moveForward = moveBackward = moveLeft = moveRight = false;
+});
+
+// ==========================================
+// 4. PEER.JS LOGIC
 // ==========================================
 const peer = new Peer();
 let conn = null;
 
 const statusEl = document.getElementById('status');
 const myIdEl = document.getElementById('my-id');
-const hostBtn = document.getElementById('host-btn');
-const joinBtn = document.getElementById('join-btn');
-const joinIdInput = document.getElementById('join-id');
 const uiContainer = document.getElementById('ui-container');
 
 peer.on('open', (id) => {
     myIdEl.innerText = id;
     statusEl.innerText = "Ready to connect!";
-    hostBtn.disabled = false;
-    joinBtn.disabled = false;
+    document.getElementById('host-btn').disabled = false;
+    document.getElementById('join-btn').disabled = false;
 });
 
-// Hosting
-hostBtn.addEventListener('click', () => {
-    statusEl.innerText = "Waiting for a player to join...";
-    peer.on('connection', (connection) => {
-        conn = connection;
-        setupConnection();
-    });
+document.getElementById('host-btn').addEventListener('click', () => {
+    statusEl.innerText = "Waiting for a player...";
+    peer.on('connection', (connection) => { conn = connection; setupConnection(); });
 });
 
-// Joining
-joinBtn.addEventListener('click', () => {
-    const hostId = joinIdInput.value.trim();
+document.getElementById('join-btn').addEventListener('click', () => {
+    const hostId = document.getElementById('join-id').value.trim();
     if (!hostId) return alert("Enter an ID");
     statusEl.innerText = "Connecting...";
     conn = peer.connect(hostId);
@@ -122,17 +178,21 @@ joinBtn.addEventListener('click', () => {
 
 function setupConnection() {
     conn.on('open', () => {
-        uiContainer.style.display = 'none'; // Hide menu
-        remotePlayer.visible = true;       // Show enemy
-        controls.lock();                   // Enter game
+        uiContainer.style.display = 'none';
+        remotePlayer.visible = true;
+        inGame = true;
+        
+        if (isMobile) {
+            document.body.classList.add('in-game');
+        } else {
+            controls.lock();
+        }
     });
 
     conn.on('data', (data) => {
         if (data.type === 'transform') {
-            // Update enemy position based on received data
             remotePlayer.position.set(data.x, data.y, data.z);
         } else if (data.type === 'hit') {
-            // We got shot!
             const damageOverlay = document.getElementById('damage-overlay');
             damageOverlay.style.opacity = 0.5;
             setTimeout(() => damageOverlay.style.opacity = 0, 150);
@@ -146,30 +206,35 @@ function setupConnection() {
 }
 
 // ==========================================
-// 4. SHOOTING LOGIC
+// 5. SHOOTING LOGIC
 // ==========================================
-document.addEventListener('mousedown', (e) => {
-    if (!controls.isLocked || !conn || !conn.open) return;
-    if (e.button !== 0) return; // Only Left click
+function attemptShoot() {
+    if (!inGame || !conn || !conn.open) return;
 
-    // Raycast from center of camera
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
     const intersects = raycaster.intersectObject(remotePlayer);
 
     if (intersects.length > 0) {
-        // We hit the remote player! Flash them white locally.
         remotePlayer.material.color.setHex(0xffffff);
         setTimeout(() => remotePlayer.material.color.setHex(0xff0000), 100);
-        
-        // Tell the other player they got hit
         conn.send({ type: 'hit' });
     }
+}
+
+// Desktop Shoot
+document.addEventListener('mousedown', (e) => {
+    if (e.button === 0 && !isMobile && controls.isLocked) attemptShoot();
+});
+
+// Mobile Shoot
+document.getElementById('mobile-shoot').addEventListener('touchstart', (e) => {
+    e.preventDefault(); 
+    attemptShoot();
 });
 
 // ==========================================
-// 5. GAME LOOP
+// 6. GAME LOOP
 // ==========================================
 function animate() {
     requestAnimationFrame(animate);
@@ -177,31 +242,36 @@ function animate() {
     const time = performance.now();
     const delta = (time - prevTime) / 1000;
 
-    if (controls.isLocked) {
-        // Physics / Movement
+    // Run movement physics if game has started
+    if (inGame) {
         velocity.x -= velocity.x * 10.0 * delta;
         velocity.z -= velocity.z * 10.0 * delta;
 
         direction.z = Number(moveForward) - Number(moveBackward);
         direction.x = Number(moveRight) - Number(moveLeft);
-        direction.normalize(); // Ensure consistent speed in all directions
+        direction.normalize(); 
 
         const speed = 40.0;
         if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
         if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
 
-        controls.moveRight(-velocity.x * delta);
-        controls.moveForward(-velocity.z * delta);
+        if (isMobile) {
+            // Manual movement for mobile (Translate relative to camera rotation)
+            camera.translateX(-velocity.x * delta);
+            camera.translateZ(-velocity.z * delta);
+        } else {
+            // PointerLock standard movement
+            controls.moveRight(-velocity.x * delta);
+            controls.moveForward(-velocity.z * delta);
+        }
         
-        // Lock player to floor height
-        camera.position.y = 1.6; 
+        camera.position.y = 1.6; // Lock to floor height
 
-        // Send our position to the opponent
         if (conn && conn.open) {
             conn.send({
                 type: 'transform',
                 x: camera.position.x,
-                y: camera.position.y - 0.6, // send the center of the mesh, not eye level
+                y: camera.position.y - 0.6,
                 z: camera.position.z
             });
         }
@@ -211,7 +281,6 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// Handle window resizing
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
