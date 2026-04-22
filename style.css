@@ -5,7 +5,7 @@ body, html {
     background-color: #111;
     color: white;
     font-family: sans-serif;
-    touch-action: none; /* Prevents mobile pull-to-refresh and scrolling */
+    touch-action: none;
 }
 
 canvas {
@@ -53,6 +53,19 @@ button:disabled {
     cursor: not-allowed;
 }
 
+/* --- HUD --- */
+#health-display {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #28a745;
+    text-shadow: 2px 2px 0 #000;
+    z-index: 10;
+    display: none;
+}
+
 #crosshair {
     position: absolute;
     top: 50%;
@@ -89,7 +102,7 @@ button:disabled {
    MOBILE CONTROLS 
    ============================ */
 #mobile-controls {
-    display: none; /* Hidden on desktop */
+    display: none; 
     position: absolute;
     bottom: 0;
     left: 0;
@@ -101,8 +114,8 @@ button:disabled {
 
 #joystick-zone {
     position: absolute;
-    bottom: 40px;
-    left: 40px;
+    bottom: 30px;
+    left: 30px;
     width: 120px;
     height: 120px;
     background: rgba(255, 255, 255, 0.2);
@@ -121,13 +134,11 @@ button:disabled {
     transform: translate(-50%, -50%);
 }
 
-#mobile-shoot {
+#mobile-shoot, #mobile-jump {
     position: absolute;
-    bottom: 60px;
-    right: 40px;
-    width: 80px;
-    height: 80px;
-    background: rgba(255, 0, 0, 0.5);
+    bottom: 40px;
+    width: 70px;
+    height: 70px;
     border: 2px solid white;
     border-radius: 50%;
     color: white;
@@ -135,8 +146,18 @@ button:disabled {
     pointer-events: auto;
 }
 
-/* Show mobile UI only if touch is detected and game has started */
-.touch-device.in-game #mobile-controls {
+#mobile-shoot {
+    right: 30px;
+    background: rgba(255, 0, 0, 0.5);
+}
+
+#mobile-jump {
+    right: 120px;
+    background: rgba(0, 123, 255, 0.5);
+}
+
+.touch-device.in-game #mobile-controls,
+.in-game #health-display {
     display: block;
 }
 .touch-device.in-game #crosshair {
